@@ -120,7 +120,7 @@ export function MapView() {
       void cameraController.intro();
     });
     // Show the globe immediately behind the loading veil
-    viewer.camera.setView({ destination: Cartesian3.fromDegrees(8, 12, 2.4e7) });
+    viewer.camera.setView({ destination: Cartesian3.fromDegrees(46.68, 24.71, 38000) });
 
     return () => {
       cancelled = true;

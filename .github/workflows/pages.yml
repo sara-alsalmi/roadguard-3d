@@ -1,7 +1,8 @@
 # Publishes the demo to GitHub Pages on every push to main.
 # One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
-# The build has NO Cesium ion token (the demo then uses the light public map). Adding a token as a build secret would
-# expose it in the published JavaScript, so restrict any token to your Pages URL in the Cesium ion dashboard first.
+# Optional Cesium ion token: add a repo secret named VITE_CESIUM_ION_TOKEN (Settings -> Secrets and variables -> Actions).
+# A token in a website is always readable in its JavaScript, so use a token restricted in the Cesium ion dashboard:
+# Allowed URLs = https://<user>.github.io, scope assets:read only. Without the secret the site uses the light public map.
 name: Deploy to GitHub Pages
 on:
   push:
@@ -27,6 +28,7 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_CESIUM_ION_TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

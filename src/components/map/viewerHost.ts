@@ -6,6 +6,10 @@ import {
   createOsmBuildingsAsync,
   GoogleMaps,
   ImageryLayer,
+  Cartesian3,
+  Cartographic,
+  Math as CesiumMath,
+  Rectangle,
   IonGeocodeProviderType,
   IonImageryProvider,
   Ion,
@@ -51,6 +55,36 @@ async function ionReachable(token: string, ms = 6000): Promise<boolean> {
   }
 }
 
+/**
+ * The map only covers Riyadh: imagery is requested only inside this box and the camera cannot leave it.
+ * Keeps the demo focused and light (no world tiles, no flying around the globe).
+ */
+export const RIYADH = { west: 46.45, south: 24.45, east: 47.0, north: 25.0 };
+const RIYADH_RECT = Rectangle.fromDegrees(RIYADH.west, RIYADH.south, RIYADH.east, RIYADH.north);
+const MAX_HEIGHT_M = 40000;
+
+/** Keep the camera above Riyadh (position clamped to the box, height capped). */
+function lockToRiyadh(viewer: Viewer) {
+  const ctl = viewer.scene.screenSpaceCameraController;
+  ctl.maximumZoomDistance = MAX_HEIGHT_M;
+  const carto = new Cartographic();
+  viewer.scene.preUpdate.addEventListener(() => {
+    const cam = viewer.camera;
+    Cartographic.fromCartesian(cam.positionWC, undefined, carto);
+    if (!carto) return;
+    const lon = CesiumMath.toDegrees(carto.longitude);
+    const lat = CesiumMath.toDegrees(carto.latitude);
+    const cl = Math.min(RIYADH.east, Math.max(RIYADH.west, lon));
+    const ct = Math.min(RIYADH.north, Math.max(RIYADH.south, lat));
+    const ch = Math.min(MAX_HEIGHT_M, carto.height);
+    if (cl === lon && ct === lat && ch === carto.height) return;
+    cam.setView({
+      destination: Cartesian3.fromDegrees(cl, ct, ch),
+      orientation: { heading: cam.heading, pitch: cam.pitch, roll: cam.roll },
+    });
+  });
+}
+
 /** Create the single Cesium viewer. Throws if WebGL is unavailable. */
 export function createViewer(container: HTMLElement): ViewerHandle {
   if (typeof location !== "undefined" && new URLSearchParams(location.search).has("forcefallback")) {
@@ -92,6 +126,7 @@ export function createViewer(container: HTMLElement): ViewerHandle {
   scene.globe.tileCacheSize = 300;
   scene.globe.maximumScreenSpaceError = HQ ? 2 : 2.5;
   scene.screenSpaceCameraController.minimumZoomDistance = 12;
+  lockToRiyadh(viewer);
 
   // Fixed late-afternoon sun in Riyadh (15:20 local) for consistent, warm lighting.
   viewer.clock.currentTime = JulianDate.fromIso8601("2026-11-24T12:20:00Z");
@@ -112,7 +147,8 @@ export function createViewer(container: HTMLElement): ViewerHandle {
       credit: "Labels © Esri",
     });
     labels.errorEvent.addEventListener(() => undefined);
-    const l = viewer.imageryLayers.addImageryProvider(labels);
+    const l = new ImageryLayer(labels, { rectangle: RIYADH_RECT });
+    viewer.imageryLayers.add(l);
     l.alpha = 0.85;
   };
 
@@ -127,7 +163,7 @@ export function createViewer(container: HTMLElement): ViewerHandle {
     try {
       if (hasIon) {
         // plain aerial (no road shields / numbers) so the hazards stay the focus; district names come from the Esri layer below
-        const layer = ImageryLayer.fromProviderAsync(IonImageryProvider.fromAssetId(2));
+        const layer = ImageryLayer.fromProviderAsync(IonImageryProvider.fromAssetId(2), { rectangle: RIYADH_RECT });
         viewer.imageryLayers.add(layer);
         layer.brightness = 0.82;
         layer.saturation = 0.8;
@@ -140,7 +176,8 @@ export function createViewer(container: HTMLElement): ViewerHandle {
           credit: "Imagery © Esri, Maxar, Earthstar Geographics",
         });
         provider.errorEvent.addEventListener((err) => console.warn("[RoadGuard] imagery tile error", err?.message));
-        const layer = viewer.imageryLayers.addImageryProvider(provider);
+        const layer = new ImageryLayer(provider, { rectangle: RIYADH_RECT });
+        viewer.imageryLayers.add(layer);
         layer.brightness = 0.92;
         layer.saturation = 0.9;
         addPlaceNames();

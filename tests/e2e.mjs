@@ -1,8 +1,7 @@
-// End-to-end check of the real running app (Playwright + headless Chromium).
+// End-to-end check of the digital twin (Playwright + headless Chromium).
 //   npm run dev                         (terminal 1)
 //   npx playwright install chromium     (once)
 //   npm run test:e2e                    (terminal 2)
-// Uses ?lowperf and the window.__rg hook to pump frames: headless software GL renders only a few fps.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
@@ -17,7 +16,7 @@ const check = (name, ok, detail = "") => {
 
 const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--enable-webgl"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-page.setDefaultTimeout(120000);
+page.setDefaultTimeout(60000);
 const consoleErrors = [];
 const failedRequests = [];
 page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
@@ -26,127 +25,60 @@ page.on("response", (r) => r.status() >= 400 && failedRequests.push(`${r.status(
 
 await page.goto(`${BASE}/?lowperf`);
 await page.waitForFunction(() => window.__rg && window.__rg.store.getState().mapStatus === "ready", null, { timeout: 60000 });
-await page.evaluate(() => {
-  const rg = window.__rg;
-  window.__pump = async (ms) => { const end = performance.now() + ms; while (performance.now() < end) { rg.viewer.render(); await new Promise((r) => setTimeout(r, 0)); } };
-  window.__until = async (cond, ms = 40000) => { const end = performance.now() + ms; while (performance.now() < end) { if (cond()) return true; rg.viewer.render(); await new Promise((r) => setTimeout(r, 0)); } return false; };
-});
-const pump = (ms) => page.evaluate((m) => window.__pump(m), ms);
-const until = (src, ms = 60000) => page.evaluate(`window.__until(() => ${src}, ${ms})`);
-const state = () => page.evaluate(() => { const s = window.__rg.store.getState(); return { n: s.incidents.length, sel: s.selectedId, busy: s.cameraBusy, st: Object.fromEntries(s.incidents.map((i) => [i.id, i.status])) }; });
+const s = () => page.evaluate(() => { const st = window.__rg.store.getState(); return { n: st.incidents.length, sel: st.selectedId, items: st.incidents }; });
+const ents = (name) => page.evaluate((n) => window.__rg.viewer.dataSources._dataSources.find((d) => d.name === n)?.entities.values.length ?? 0, name);
 
 check("Cesium canvas renders", (await page.locator(".cesium-widget canvas").count()) === 1);
-await pump(9000);
-await page.screenshot({ path: "shots/01-overview.png" });
-check("Left card (Riyadh locator + camera) and right panel are visible", (await page.getByTestId("left-panel").isVisible()) && (await page.getByTestId("right-panel").isVisible()));
-check("Right panel starts on AI Inspection with the three sample images", (await page.getByTestId("sample-pothole").isVisible()) && (await page.getByTestId("sample-barrier").isVisible()) && (await page.getByTestId("sample-sidewalk").isVisible()));
-check("Riyadh locator is shown", await page.getByTestId("locator").isVisible());
-await page.getByTestId("tab-incidents").click();
-check("Seed reports listed", (await page.getByTestId("incident-total").innerText()).includes("8"));
-check("Reports are spread over several streets", await page.evaluate(() => { const l = window.__rg.store.getState().incidents.map((i) => i.lon); return Math.max(...l) - Math.min(...l) > 0.008; }));
+check("Starts empty", (await s()).n === 0);
+check("No vehicles, teams or operator buttons", (await page.locator('[data-testid="live-toggle"], [data-testid="assign-maintenance"], [data-testid="launch-mission"]').count()) === 0);
+check("Road health is drawn", (await ents("road-health")) > 20);
 
-// filters
-await page.getByTestId("filter-class-pothole").click();
-check("Type filter narrows the list", (await page.getByTestId("incident-count").innerText()).includes("4 of 8"));
-await page.getByTestId("filter-class-all").click();
-await page.getByTestId("filter-status-alerts").click();
-check("Status filter narrows the list", (await page.getByTestId("incident-count").innerText()).includes("4 of 8"));
-await page.getByTestId("filter-status-all").click();
-check("Map key (legend) is in the left card", await page.getByTestId("legend").isVisible());
-await page.keyboard.press("f");
-await pump(300);
-check("Presentation mode (F) hides the panels", !(await page.getByTestId("left-panel").isVisible()) && !(await page.getByTestId("right-panel").isVisible()));
-await page.keyboard.press("Escape");
-await pump(300);
-check("Esc brings the panels back", (await page.getByTestId("left-panel").isVisible()) && (await page.getByTestId("right-panel").isVisible()));
+await page.getByTestId("load-examples").click();
+await page.waitForTimeout(800);
+check("Examples are placed on the map", (await s()).n === 3);
+check("Each damage gets a 3D model", (await ents("hazards")) === 3);
+check("Healthy roads drop below 100%", !(await page.getByTestId("stat-healthy").innerText()).includes("100"));
 
-// incoming report -> appears on map, details open
-const before = (await state()).n;
-await page.getByTestId("simulate-report").click();
-await until("!window.__rg.store.getState().cameraBusy");
-await pump(800);
-const after = await state();
-const id = after.sel;
-check("Incoming report appears immediately", after.n === before + 1 && after.sel !== null);
-check("Details panel shows the prediction with the Demo label", (await page.getByTestId("incident-detail").getByTestId("demo-badge").isVisible()) && (await page.getByTestId("bbox").count()) >= 1);
-check("Photo shows in the right panel only (no extra balloon on the map)", (await page.getByTestId("map-callout").count()) === 0 && (await page.getByTestId("incident-detail").locator("img").first().isVisible()));
-check("Arrival alert is shown", (await page.evaluate(() => !!window.__rg.store.getState().alert)) || (await page.getByTestId("arrival-alert").isVisible()));
-await page.getByTestId("back-to-list").click();
-check("Total counter updates", (await page.getByTestId("incident-total").innerText()).includes(String(before + 1)));
-await page.getByTestId(`incident-row-${id}`).click();
-await pump(600);
-await page.screenshot({ path: "shots/02-incoming-report.png" });
+// upload: two photos of the same MOMRA case + a YOLO label, and one video
+const n1 = "DATA-WORKATTACH-FILE MOMRA-OPS-CS-WORK INC-21-06-038549!20210610T165255.438 GMT";
+const n2 = "DATA-WORKATTACH-FILE MOMRA-OPS-CS-WORK INC-21-06-038549!20210610T165256.358 GMT";
+const jpg = Buffer.from("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==", "base64");
+await page.getByTestId("upload-input").setInputFiles([
+  { name: `${n1}.jpg`, mimeType: "image/jpeg", buffer: jpg },
+  { name: `${n1}.txt`, mimeType: "text/plain", buffer: Buffer.from("2 0.55 0.37 0.5 0.72\n") },
+  { name: `${n2}.jpg`, mimeType: "image/jpeg", buffer: jpg },
+  { name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(64) },
+]);
+await page.waitForTimeout(1200);
+const after = await s();
+const group = after.items.find((i) => i.groupKey === "INC-21-06-038549");
+check("Photos of the same case become one damage", !!group && group.media.length === 2);
+check("YOLO label gives class and box", group?.cls === "pothole" && group.media[0].annotations.length === 1 && group.media[0].annotations[0].confidence === undefined);
+check("Date is read from the file name", group?.media[0].capturedAt === "2021-06-10T16:52:55Z");
+check("Video becomes its own damage", after.items.some((i) => i.media?.[0]?.type === "video"));
+check("Every position is marked simulated", after.items.every((i) => i.locationSource === "simulated"));
 
-// marker exists at the report coordinates
-const markerOk = await page.evaluate((rid) => {
-  const v = window.__rg.viewer; const i = window.__rg.store.getState().incidents.find((x) => x.id === rid);
-  for (let k = 0; k < v.dataSources.length; k++) {
-    const e = v.dataSources.get(k).entities.getById(`incident:${rid}`);
-    if (e) { const c = window.Cesium ? null : null; void c; return !!e.position && e.show; }
-  }
-  return false;
-}, id);
-check("Map marker exists for the new report", markerOk);
+await page.getByTestId(`damage-${group.id}`).click();
+await page.waitForTimeout(800);
+check("Opening a damage shows its gallery", (await page.getByTestId("damage-view").isVisible()) && (await page.getByTestId("damage-view").locator("img").count()) >= 2);
+await page.screenshot({ path: "shots/01-damage.png" });
+await page.getByTestId("back").click();
 
-// lifecycle
-check("New camera reports arrive as Predicted", (await state()).st[id] === "predicted");
-await page.getByTestId("confirm-prediction").click();
-check("Confirm moves a prediction to Under Review", (await state()).st[id] === "review");
-await page.evaluate(() => { window.__rg.engine.fixedDt = 0.1; });
-await page.getByTestId("assign-maintenance").click();
-check("Assign team sets Team Assigned", (await state()).st[id] === "assigned");
-await page.getByTestId("speed-4").click();
-await page.getByTestId("follow-maint").click();
-check("Team completes the (simulated) work", await until(`window.__rg.store.getState().dispatches['${id}']?.phase === 'done'`, 200000));
-await page.screenshot({ path: "shots/03-team-on-site.png" });
-await page.getByTestId("resolve").click();
-check("Mark resolved closes the report", (await state()).st[id] === "resolved");
+// linked website: a model result arrives through postMessage
+const r = await page.evaluate(async () => {
+  window.postMessage({ type: "roadguard:detection", cls: "barrier", image: "https://example.com/x.jpg", boxes: [{ bbox: [0.1, 0.1, 0.3, 0.3], confidence: 0.9 }], focus: false }, "*");
+  await new Promise((res) => setTimeout(res, 400));
+  return window.__rg.store.getState().incidents.at(-1);
+});
+check("Linked website detection is placed with model confidence", r.cls === "barrier" && r.media[0].annotations[0].confidence === 0.9 && r.locationSource === "simulated");
 
-// all three demo types
-for (let k = 0; k < 2; k++) { await page.getByTestId("simulate-report").click(); await pump(400); }
-const classes = await page.evaluate(() => [...new Set(window.__rg.store.getState().incidents.slice(-3).map((i) => i.cls))].sort().join(","));
-check("Pothole, barrier and sidewalk demos all work", classes === "barrier,pothole,sidewalk", classes);
-
-const nBefore = (await state()).n;
-await page.getByTestId("simulate-report").click();
-await pump(400);
-await page.getByTestId("dismiss-prediction").click();
-check("Dismiss removes a false alarm", (await state()).n === nBefore);
-
-// a team on another street (Olaya Street)
-await page.evaluate(() => window.__rg.store.getState().set({ panel: "incidents", selectedId: null }));
-await page.getByTestId("incident-row-RG-0102").click();
-await pump(500);
-await page.getByTestId("assign-maintenance").click();
-check("A team can be sent along Olaya Street", await until("window.__rg.store.getState().dispatches['RG-0102']?.phase === 'done'", 240000));
-
-// analytics
-await page.getByTestId("tab-analytics").click();
-check("Analytics tab renders", await page.getByTestId("analytics").isVisible());
-await page.getByTestId("tab-incidents").click();
-
-// live simulation: reports arrive on their own
-if (await page.getByTestId("back-to-list").isVisible()) await page.getByTestId("back-to-list").click();
-const n0 = (await state()).n;
-await page.getByTestId("live-toggle").click();
-check("Live simulation adds reports by itself", await until(`window.__rg.store.getState().incidents.length > ${n0}`, 60000));
-await page.getByTestId("live-toggle").click();
-
-// guided demo
-await page.evaluate(() => { window.__rg.engine.fixedDt = 0.25; });
-await page.getByTestId("launch-mission").click();
-check("Guided demo reaches the final step", await until("window.__rg.store.getState().mission.step === 5", 360000));
-await pump(2500);
-await page.screenshot({ path: "shots/04-demo-summary.png" });
-await page.getByTestId("mission-exit").click();
-
-const ignorable = (t) => /\/api\/predict|502|ERR_ABORTED/.test(t);
+const ignorable = (t) => /example\.com|ERR_ABORTED|clip\.mp4|blob:/.test(t);
 const errs = consoleErrors.filter((t) => !ignorable(t));
 check("No important console errors", errs.length === 0, errs.slice(0, 2).join(" | ").slice(0, 300));
 const failed = failedRequests.filter((t) => !ignorable(t));
 check("No essential asset failed to load", failed.length === 0, failed.slice(0, 3).join(" | "));
 
 await browser.close();
-const bad = results.filter((r) => !r.ok);
+const bad = results.filter((x) => !x.ok);
 console.log(`\n${results.length - bad.length}/${results.length} checks passed`);
 process.exit(bad.length ? 1 : 0);

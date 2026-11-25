@@ -2,7 +2,7 @@ import { Home, Info, Layers, Minus, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CONFIG } from "../../data/config";
 import { useApp } from "../../store/appStore";
-import { setCamMode } from "../simulation/actions";
+import { goOverview } from "../../twin/actions";
 import { cameraController } from "./cameraController";
 
 /** Google-Earth-style navigation stack: zoom, compass, 2D/3D tilt, home, layer info. */
@@ -54,7 +54,7 @@ export function MapControls() {
           {tilted ? "3D" : "2D"}
         </button>
         <div className="h-px bg-white/10" />
-        <button className="map-btn" aria-label="Back to the corridor" title="Back to the inspection corridor" onClick={() => setCamMode("overview")}><Home size={17} /></button>
+        <button className="map-btn" aria-label="Back to the roads" title="Back to the demo roads" onClick={goOverview}><Home size={17} /></button>
       </div>
       <div className="glass !rounded-xl overflow-hidden">
         <button className="map-btn" aria-label="Map layers and info" title="Map layers & info" aria-pressed={info} onClick={() => setInfo(!info)}>

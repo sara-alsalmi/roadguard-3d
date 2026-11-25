@@ -13,6 +13,16 @@ export interface Annotation {
   source: AnnotationSource;
 }
 
+/** One photo or video of a damage, shown in the gallery when the damage is opened on the map. */
+export interface MediaItem {
+  type: "image" | "video";
+  url: string;
+  name: string;
+  annotations: Annotation[];
+  /** ISO date-time when known (e.g. read from the file name) */
+  capturedAt?: string;
+}
+
 export interface Incident {
   id: string;
   cls: IncidentClass;
@@ -28,6 +38,10 @@ export interface Incident {
   annotations: Annotation[];
   origin: "seed" | "inspection" | "manual-report";
   createdLabel: string;
+  /** all photos / videos of this damage (the first one is also imageUrl / annotations) */
+  media?: MediaItem[];
+  /** groups uploads of the same case, e.g. the INC number in the file name */
+  groupKey?: string;
   /** where the detection came from (display text), e.g. the camera network */
   source?: string;
 }

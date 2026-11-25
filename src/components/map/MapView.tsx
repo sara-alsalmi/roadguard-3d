@@ -1,7 +1,6 @@
 import {
   BoundingSphere,
   Cartesian3,
-  Cartographic,
   Entity,
   HeadingPitchRange,
   Math as CesiumMath,
@@ -12,8 +11,9 @@ import {
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { useEffect, useRef } from "react";
 import { useApp } from "../../store/appStore";
-import { handleInspectionEvent, selectIncident, setCamMode } from "../simulation/actions";
-import { engine } from "../simulation/simulationEngine";
+import { selectDamage } from "../../twin/actions";
+import { hazardLayer } from "../twin/hazardLayer";
+import { healthLayer } from "../twin/healthLayer";
 import { cameraController } from "./cameraController";
 import { incidentLayer } from "./incidentLayer";
 import { createViewer } from "./viewerHost";
@@ -21,13 +21,12 @@ import { createViewer } from "./viewerHost";
 declare global {
   interface Window {
     /** Debug / test hook used by the Playwright suite. */
-    __rg?: { viewer: Viewer; engine: typeof engine; camera: typeof cameraController; store: typeof useApp };
+    __rg?: { viewer: Viewer; camera: typeof cameraController; store: typeof useApp };
   }
 }
 
 export function MapView() {
   const ref = useRef<HTMLDivElement>(null);
-  const picking = useApp((s) => s.pickingLocation);
 
   useEffect(() => {
     const el = ref.current;
@@ -46,28 +45,14 @@ export function MapView() {
     }
     const { viewer } = handle;
     cameraController.attach(viewer);
-    engine.attach(viewer);
-    engine.onEvent = handleInspectionEvent;
+    healthLayer.attach(viewer);
     incidentLayer.attach(viewer);
-    window.__rg = { viewer, engine, camera: cameraController, store: useApp };
+    hazardLayer.attach(viewer);
+    window.__rg = { viewer, camera: cameraController, store: useApp };
 
     // ------------------------------------------------------------ input
     const handler = new ScreenSpaceEventHandler(viewer.canvas);
     handler.setInputAction((click: { position: { x: number; y: number } }) => {
-      const st = useApp.getState();
-      if (st.pickingLocation) {
-        const ray = viewer.camera.getPickRay(click.position as never);
-        const cart = (ray && viewer.scene.globe.pick(ray, viewer.scene)) || viewer.camera.pickEllipsoid(click.position as never);
-        if (cart) {
-          const c = Cartographic.fromCartesian(cart);
-          st.patchDetection({
-            draftLocation: { lon: CesiumMath.toDegrees(c.longitude), lat: CesiumMath.toDegrees(c.latitude), source: "manual" },
-          });
-          st.set({ pickingLocation: false });
-          st.addLog("Report location selected manually on the map", "info");
-        }
-        return;
-      }
       const picked = viewer.scene.pick(click.position as never);
       const id = picked?.id;
       if (Array.isArray(id)) {
@@ -81,14 +66,8 @@ export function MapView() {
           });
         }
       } else if (id instanceof Entity) {
-        if (id.id.startsWith("incident:")) selectIncident(id.id.slice("incident:".length), true);
-        else if (id.id === "vehicle:inspection") {
-          useApp.getState().set({ followTarget: "inspection" });
-          setCamMode("follow");
-        } else if (id.id.startsWith("maint:")) {
-          useApp.getState().set({ followTarget: id.id.slice("maint:".length) });
-          setCamMode("follow");
-        }
+        if (id.id.startsWith("incident:")) selectDamage(id.id.slice("incident:".length), true);
+        else if (id.id.startsWith("hazard:")) selectDamage(id.id.slice("hazard:".length), true);
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
 
@@ -97,13 +76,9 @@ export function MapView() {
       const now = performance.now();
       if (now - lastMove < 80) return;
       lastMove = now;
-      if (useApp.getState().pickingLocation) {
-        viewer.canvas.style.cursor = "crosshair";
-        return;
-      }
       const p = viewer.scene.pick(m.endPosition as never);
       const id = p?.id;
-      viewer.canvas.style.cursor = Array.isArray(id) || (id instanceof Entity && /^(incident|vehicle|maint):/.test(id.id)) ? "pointer" : "";
+      viewer.canvas.style.cursor = Array.isArray(id) || (id instanceof Entity && /^(incident|hazard):/.test(id.id)) ? "pointer" : "";
       const cur = useApp.getState().hover;
       if (id instanceof Entity && id.id.startsWith("incident:")) {
         const rect = viewer.canvas.getBoundingClientRect();
@@ -113,9 +88,8 @@ export function MapView() {
 
     // ----------------------------------------------------------- startup
     let cancelled = false;
-    void handle.ready.then(({ terrainSampled }) => {
+    void handle.ready.then(() => {
       if (cancelled) return;
-      if (terrainSampled) engine.refreshHeights();
       set({ mapStatus: "ready", mapMessage: "" });
       void cameraController.intro();
     });
@@ -125,19 +99,14 @@ export function MapView() {
     return () => {
       cancelled = true;
       handler.destroy();
-      engine.onEvent = null;
       incidentLayer.detach();
-      engine.detach();
+      hazardLayer.detach();
+      healthLayer.detach();
       cameraController.detach();
       handle.destroy();
       if (window.__rg?.viewer === viewer) delete window.__rg;
     };
   }, []);
-
-  useEffect(() => {
-    const c = ref.current?.querySelector("canvas");
-    if (c) c.style.cursor = picking ? "crosshair" : "";
-  }, [picking]);
 
   return <div ref={ref} className="absolute inset-0 rg-cesium" data-testid="cesium-container" />;
 }

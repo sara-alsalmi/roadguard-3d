@@ -36,12 +36,12 @@
       </select>
     </div>
     <div>
-      <label for="file">Road image</label>
-      <input id="file" type="file" accept="image/png,image/jpeg,image/webp" />
+      <label for="file">Road photo or video</label>
+      <input id="file" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm" />
       <img id="preview" alt="Selected road image" />
     </div>
     <button id="send" disabled>Send to the map</button>
-    <div class="note">The map places the image at a simulated spot on the demo roads (no GPS in the dataset) and runs the automatic response. This test page sends no boxes or confidence: those come from your real model.</div>
+    <div class="note">The map places the photo or video at a simulated spot on a real Riyadh road (the files have no GPS). This test page sends no boxes or confidence: those come from your real model.</div>
     <label>Messages from the map</label>
     <div id="log"></div>
   </section>
@@ -54,6 +54,7 @@
   const file = document.getElementById("file");
   const preview = document.getElementById("preview");
   let imageDataUrl = null;
+  let videoFile = null;
   let ready = false;
 
   const write = (t) => { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString() + "  " + t; log.prepend(d); };
@@ -62,7 +63,7 @@
   window.addEventListener("message", (e) => {
     if (e.source !== map.contentWindow || !e.data || typeof e.data.type !== "string") return;
     const { type, ...rest } = e.data;
-    if (type === "roadguard:ready") { ready = true; send.disabled = !imageDataUrl; }
+    if (type === "roadguard:ready") { ready = true; send.disabled = !(imageDataUrl || videoFile); }
     write(type + " " + JSON.stringify(rest));
   });
   // ask the map whether it is ready (in case it loaded before this listener)
@@ -72,6 +73,8 @@
   file.addEventListener("change", () => {
     const f = file.files && file.files[0];
     if (!f) return;
+    imageDataUrl = null; videoFile = null; preview.style.display = "none";
+    if (f.type.startsWith("video/")) { videoFile = f; send.disabled = !ready; return; }
     const img = new Image();
     img.onload = () => {
       const s = Math.min(1, 1280 / Math.max(img.width, img.height));
@@ -89,7 +92,9 @@
   send.addEventListener("click", () => {
     const cls = document.getElementById("cls").value;
     // with the real model, also send its boxes: boxes: [{ bbox: [x, y, w, h] (0..1), confidence }]
-    const msg = { type: "roadguard:detection", cls, image: imageDataUrl, auto: true, focus: true };
+    // a File / Blob can be sent directly (postMessage copies it); an https:// URL works too
+    const msg = { type: "roadguard:detection", cls, focus: true, name: file.files[0].name };
+    if (videoFile) msg.video = videoFile; else msg.image = imageDataUrl;
     map.contentWindow.postMessage(msg, "*");
     write("sent roadguard:detection (" + cls + ")");
   });

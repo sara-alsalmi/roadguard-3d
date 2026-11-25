@@ -1,28 +1,28 @@
 /**
- * Link RoadGuard 3D with another website.
+ * Link the RoadGuard 3D digital twin with another website.
  *
  * Embed:   <iframe src="https://<site>/?embed"></iframe>
  * Inbound  (host page -> map), via iframe.contentWindow.postMessage(msg, "*"):
- *   { type: "roadguard:detection", cls, image?, title?, boxes?, auto?, focus? }   a model result enters the map
- *   { type: "roadguard:select", id }                                              open a report
- *   { type: "roadguard:ping" }                                                    ask for "roadguard:ready"
+ *   { type: "roadguard:detection", cls, image?, video?, name?, title?, boxes?, caseId?, focus? }   a photo / video enters the map
+ *   { type: "roadguard:select", id }                                                            open a damage
+ *   { type: "roadguard:clear" }                                                                 remove everything
+ *   { type: "roadguard:ping" }                                                                  ask for "roadguard:ready"
  * Outbound (map -> host page, window.parent):
- *   roadguard:ready, roadguard:created {id, cls, lon, lat}, roadguard:status {id, status}, roadguard:selected {id}, roadguard:error {message}
+ *   roadguard:ready, roadguard:created {id, cls, lon, lat, locationSource}, roadguard:selected {id}, roadguard:error {message}
  *
- * Integrity: the dataset has no GPS, so every detection is placed at a SIMULATED spot on the demo roads (locationSource
+ * image / video: an https:// URL, a data: URL, or a Blob / File object (postMessage can carry files directly).
+ * Integrity: the images have no GPS, so every damage is placed at a SIMULATED spot on a real road (locationSource
  * "simulated"). Confidence is shown only when the host sends one from a real model; nothing is invented here.
- * `?origin=https://your-site.com` restricts which page may send messages (recommended once you know the host URL).
+ * `?origin=https://your-site.com` restricts which page may send messages.
  */
-import { CLASS_META } from "../data/config";
 import { useApp } from "../store/appStore";
-import type { Annotation, Incident, IncidentClass, IncidentStatus } from "../types";
-import { corridorLocation, NETWORK } from "../utils/network";
-import { assignMaintenance, resolveIncident, selectIncident, setReview } from "../components/simulation/actions";
+import type { Annotation, IncidentClass, MediaItem } from "../types";
+import { clearAll, selectDamage } from "../twin/actions";
+import { CLASSES, placeDamage } from "../twin/ingest";
 
 const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
 const ALLOWED_ORIGIN = params.get("origin");
-const CLASSES: IncidentClass[] = ["pothole", "barrier", "sidewalk"];
-const MAX_IMAGE_CHARS = 4_000_000; // ~3 MB data URL
+const MAX_URL_CHARS = 8_000_000;
 
 const st = () => useApp.getState();
 const inFrame = typeof window !== "undefined" && window.parent !== window;
@@ -32,21 +32,29 @@ function post(type: string, data: Record<string, unknown> = {}) {
   window.parent.postMessage({ type, ...data }, ALLOWED_ORIGIN ?? "*");
 }
 
+type Media = string | Blob;
 export interface DetectionMessage {
   cls: IncidentClass;
-  /** https URL or data:image/... URL of the camera frame */
-  image?: string;
+  image?: Media;
+  video?: Media;
+  /** file name to show */
+  name?: string;
   title?: string;
-  /** model boxes: bbox [x, y, w, h] normalised 0..1; confidence 0..1 from the real model */
+  /** model boxes for the image: bbox [x, y, w, h] normalised 0..1; confidence 0..1 from the real model */
   boxes?: { bbox: [number, number, number, number]; confidence?: number; cls?: IncidentClass }[];
-  /** run the automatic response (confirm -> team -> repair). Default true. */
-  auto?: boolean;
-  /** open the report and fly to it. Default true. */
+  /** same caseId = same damage (more photos / videos of it) */
+  caseId?: string;
   focus?: boolean;
 }
 
-const okImage = (u: unknown): u is string =>
-  typeof u === "string" && u.length < MAX_IMAGE_CHARS && (/^https:\/\//i.test(u) || /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(u));
+function mediaUrl(m: unknown, kind: "image" | "video"): string | null {
+  if (typeof Blob !== "undefined" && m instanceof Blob) return m.type.startsWith(`${kind}/`) || m.type === "" ? URL.createObjectURL(m) : null;
+  if (typeof m !== "string" || m.length > MAX_URL_CHARS) return null;
+  if (/^https:\/\//i.test(m)) return m;
+  if (kind === "image" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(m)) return m;
+  if (kind === "video" && /^data:video\/(mp4|webm|ogg|quicktime);base64,/i.test(m)) return m;
+  return null;
+}
 
 const okBox = (b: unknown): b is { bbox: [number, number, number, number]; confidence?: number; cls?: IncidentClass } => {
   if (!b || typeof b !== "object") return false;
@@ -58,64 +66,37 @@ const okBox = (b: unknown): b is { bbox: [number, number, number, number]; confi
   );
 };
 
-/** a random spot on one of the demo roads (simulated: the dataset has no GPS) */
-function simulatedSpot(cls: IncidentClass): [number, number] {
-  const c = NETWORK[Math.floor(Math.random() * NETWORK.length)];
-  const s = 40 + Math.random() * Math.max(10, c.pl.total - 80);
-  const lateral = cls === "sidewalk" ? 8 : Math.random() * 3 - 0.5;
-  return corridorLocation(c.id, s, lateral);
-}
-
-/** A detection from the other website enters the map. Returns the new report, or an error message. */
-export function addExternalDetection(d: DetectionMessage): Incident | string {
+/** A photo / video from the other website enters the map. Returns the damage id, or an error message. */
+export function addExternalDetection(d: DetectionMessage): { id: string } | string {
   if (!CLASSES.includes(d.cls)) return `cls must be one of ${CLASSES.join(", ")}`;
-  if (d.image !== undefined && !okImage(d.image)) return "image must be an https:// URL or a data:image/(png|jpeg|webp|gif);base64 URL under ~3 MB";
-  const boxes = (d.boxes ?? []).filter(okBox);
-  const annotations: Annotation[] = boxes.map((b) => ({
-    cls: b.cls ?? d.cls,
-    bbox: b.bbox,
-    // confidence is only kept when the model actually sent it
-    ...(typeof b.confidence === "number" ? { confidence: b.confidence, source: "model" as const } : { source: "manual" as const }),
-  }));
-  const fromModel = annotations.some((a) => a.source === "model");
-  const [lon, lat] = simulatedSpot(d.cls);
-  const title = (typeof d.title === "string" && d.title.trim().slice(0, 80)) || `${CLASS_META[d.cls].label} detected`;
-  const inc = st().addIncident({
+  if (d.image === undefined && d.video === undefined) return "send an image or a video";
+  const media: MediaItem[] = [];
+  const name = typeof d.name === "string" ? d.name.slice(0, 120) : "";
+  if (d.image !== undefined) {
+    const url = mediaUrl(d.image, "image");
+    if (!url) return "image must be an https:// URL, a data:image URL or an image Blob/File";
+    const annotations: Annotation[] = (d.boxes ?? []).filter(okBox).map((b) => ({
+      cls: b.cls ?? d.cls,
+      bbox: b.bbox,
+      ...(typeof b.confidence === "number" ? { confidence: b.confidence, source: "model" as const } : { source: "manual" as const }),
+    }));
+    media.push({ type: "image", url, name: name || "Photo from the linked website", annotations });
+  }
+  if (d.video !== undefined) {
+    const url = mediaUrl(d.video, "video");
+    if (!url) return "video must be an https:// URL, a data:video URL or a video Blob/File";
+    media.push({ type: "video", url, name: name || "Video from the linked website", annotations: [] });
+  }
+  const fromModel = media.some((m) => m.annotations.some((a) => a.source === "model"));
+  const inc = placeDamage({
     cls: d.cls,
-    status: "predicted",
-    lon,
-    lat,
-    locationSource: "simulated",
-    title,
-    note: "Sent by a linked website. The position is a simulated placement on the demo roads (the image has no GPS).",
-    imageUrl: d.image,
-    imageLabel: fromModel ? "Camera frame · model prediction" : "Camera frame (linked website)",
-    annotations,
-    origin: "manual-report",
+    media,
+    title: typeof d.title === "string" ? d.title : undefined,
+    groupKey: typeof d.caseId === "string" && d.caseId ? `ext:${d.caseId.slice(0, 60)}` : undefined,
     source: fromModel ? "Linked website · model prediction" : "Linked website",
   });
-  st().addLog(`Linked website sent ${inc.id} · ${CLASS_META[d.cls].label}`, "warn");
-  st().set({ alert: { id: inc.id, text: `New ${CLASS_META[d.cls].label.toLowerCase()} · ${title}` } });
-  setTimeout(() => { if (st().alert?.id === inc.id) st().set({ alert: null }); }, 9000);
-  if (d.focus !== false) selectIncident(inc.id, true);
-  if (d.auto !== false) void autoRespond(inc.id);
-  return inc;
-}
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-const statusOf = (id: string) => st().incidents.find((i) => i.id === id)?.status;
-
-/** the automatic response: confirm, send the nearest team, wait for the simulated work, close the report */
-async function autoRespond(id: string) {
-  await sleep(4000);
-  if (statusOf(id) !== "predicted") return;
-  setReview(id);
-  await sleep(2500);
-  if (statusOf(id) !== "review" || !assignMaintenance(id)) return;
-  for (let t = 0; t < 600 && st().dispatches[id]?.phase !== "done"; t++) await sleep(500);
-  if (st().dispatches[id]?.phase !== "done") return;
-  await sleep(1500);
-  resolveIncident(id);
+  if (d.focus !== false) selectDamage(inc.id, true);
+  return { id: inc.id };
 }
 
 let started = false;
@@ -129,26 +110,22 @@ export function startBridge() {
     const m = e.data as { type?: unknown } | null;
     if (!m || typeof m !== "object" || typeof m.type !== "string" || !m.type.startsWith("roadguard:")) return;
     if (m.type === "roadguard:ping") post("roadguard:ready");
+    else if (m.type === "roadguard:clear") clearAll();
     else if (m.type === "roadguard:select") {
       const id = (m as { id?: unknown }).id;
-      if (typeof id === "string" && st().incidents.some((i) => i.id === id)) selectIncident(id, true);
+      if (typeof id === "string" && st().incidents.some((i) => i.id === id)) selectDamage(id, true);
     } else if (m.type === "roadguard:detection") {
       const r = addExternalDetection(m as unknown as DetectionMessage);
       if (typeof r === "string") post("roadguard:error", { message: r });
-      else post("roadguard:created", { id: r.id, cls: r.cls, lon: r.lon, lat: r.lat, locationSource: r.locationSource });
+      else {
+        const inc = st().incidents.find((i) => i.id === r.id)!;
+        post("roadguard:created", { id: inc.id, cls: inc.cls, lon: inc.lon, lat: inc.lat, locationSource: inc.locationSource });
+      }
     }
   });
 
-  // report status / selection changes back to the host page
-  const last = new Map<string, IncidentStatus>(st().incidents.map((i) => [i.id, i.status]));
   let lastSel = st().selectedId;
   useApp.subscribe((s) => {
-    for (const i of s.incidents) {
-      if (last.get(i.id) !== i.status) {
-        if (last.has(i.id)) post("roadguard:status", { id: i.id, status: i.status });
-        last.set(i.id, i.status);
-      }
-    }
     if (s.selectedId !== lastSel) {
       lastSel = s.selectedId;
       post("roadguard:selected", { id: s.selectedId });
@@ -167,5 +144,5 @@ export function startBridge() {
   }
 }
 
-/** `?embed`: the clean view for another website (no demo buttons). */
+/** `?embed`: shown inside another website. */
 export const EMBED = params.has("embed");

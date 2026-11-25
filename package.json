@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gen:demo": "node tools/gen-demo-images.mjs",
-    "gen:vehicles": "node tools/gen-vehicles.mjs",
+    "gen:hazards": "node tools/gen-hazards.mjs",
     "test:e2e": "node tests/e2e.mjs"
   },
   "dependencies": {

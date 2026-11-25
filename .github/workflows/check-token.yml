@@ -1,0 +1,26 @@
+# Manual check: does the Cesium ion token secret work for the published site? Prints only HTTP status codes.
+name: Check Cesium token
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Token present
+        env:
+          T: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+        run: |
+          if [ -z "$T" ]; then echo "secret is EMPTY"; exit 1; fi
+          echo "secret length: ${#T}"
+          case "$T" in eyJ*) echo "looks like a Cesium token (JWT)";; *) echo "does NOT look like a Cesium token";; esac
+          case "$T" in *" "*|*"\""*) echo "WARNING: token contains spaces or quotes";; esac
+      - name: Asset access from the site origin
+        env:
+          T: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+        run: |
+          for id in 1 2 96188; do
+            code=$(curl -s -o body.json -w "%{http_code}" -H "Origin: https://sara-alsalmi.github.io" -H "Referer: https://sara-alsalmi.github.io/roadguard-3d/" "https://api.cesium.com/v1/assets/$id/endpoint?access_token=$T")
+            msg=$(python3 -c "import json;d=json.load(open('body.json'));print(d.get('message') or d.get('type') or 'ok')" 2>/dev/null || echo "?")
+            echo "asset $id -> HTTP $code ($msg)"
+          done

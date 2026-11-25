@@ -29,6 +29,7 @@ function Overview() {
           <div className="text-[11.5px] text-muted mt-1" data-testid="stat-damages">Digital twin of Riyadh roads · {damages.length} damages · {files} files</div>
         </div>
       </div>
+      <MapSource />
       {dataset && (
         <button className="btn btn-primary w-full justify-center" onClick={() => { loadDatasetCases(dataset); goOverview(); }} data-testid="load-dataset">
           Show {dataset.cases.length} real dataset cases
@@ -217,6 +218,20 @@ function RotatableImage({ src, annotations, alt }: { src: string; annotations: M
         </div>
       </div>
       <button className="btn btn-sm self-start" onClick={() => setRot((rot + 90) % 360)} data-testid="rotate"><RotateCw size={13} /> Rotate photo</button>
+    </div>
+  );
+}
+
+/** which map is showing: the full Cesium 3D city (token) or the light public map */
+function MapSource() {
+  const info = useApp((s) => s.mapInfo);
+  const full = /OSM Buildings|Google/.test(info.buildings);
+  const ready = info.buildings !== "—";
+  if (!ready) return null;
+  return (
+    <div className="flex items-center gap-2 text-[11.5px] text-muted" data-testid="map-source">
+      <span className="w-2 h-2 rounded-full" style={{ background: full ? "#30d158" : "#ff9f0a" }} />
+      {full ? "Full 3D city: Cesium terrain and buildings" : /unreachable/.test(info.terrain) ? "Light map: Cesium did not answer on this network" : "Light map (no Cesium token)"}
     </div>
   );
 }

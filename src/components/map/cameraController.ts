@@ -16,6 +16,7 @@ import type { CameraMode } from "../../types";
 import { angleDiff, bearingDeg, buildPolyline, pointAt } from "../../utils/geo";
 import { NETWORK } from "../../utils/network";
 import { routeHeightAt } from "./terrain";
+import { setRiyadhLock } from "./viewerHost";
 
 export interface Anchor {
   pos: Cartesian3;
@@ -171,14 +172,31 @@ export class CameraController {
     return this.flyToPoint(pos, { heading: ROUTE_HEADING, pitch: -36, range: 3300, duration }, "overview");
   }
 
-  /** Above Riyadh -> the demo roads (the map only covers Riyadh). */
+  /** Whole Earth -> Saudi Arabia -> the Riyadh roads; then the camera is kept over Riyadh. */
   async intro(): Promise<void> {
     const v = this.viewer;
     if (!v) return;
     this.release();
-    v.camera.setView({ destination: Cartesian3.fromDegrees(46.68, 24.71, 38000) });
-    // starts above Riyadh (the map only covers Riyadh) and glides down to the demo roads
-    await this.flyToOverview(3.2);
+    setRiyadhLock(false);
+    try {
+      const token = this.flightToken;
+      v.camera.setView({ destination: Cartesian3.fromDegrees(8, 12, 2.4e7) });
+      setBusy(true);
+      await new Promise<void>((resolve) =>
+        v.camera.flyTo({
+          destination: Cartesian3.fromDegrees(44.5, 22.5, 5.0e6),
+          orientation: { heading: 0, pitch: CesiumMath.toRadians(-90), roll: 0 },
+          duration: 3.4,
+          easingFunction: EasingFunction.CUBIC_IN_OUT,
+          complete: resolve,
+          cancel: resolve,
+        }),
+      );
+      if (token !== this.flightToken) return;
+      await this.flyToOverview(4.8);
+    } finally {
+      setRiyadhLock(true);
+    }
   }
 
   /** Lock the camera to a moving anchor using one of the vehicle presets. */

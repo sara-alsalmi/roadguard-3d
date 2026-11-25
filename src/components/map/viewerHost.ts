@@ -6,6 +6,8 @@ import {
   createOsmBuildingsAsync,
   GoogleMaps,
   ImageryLayer,
+  TileMapServiceImageryProvider,
+  buildModuleUrl,
   Cartesian3,
   Cartographic,
   Math as CesiumMath,
@@ -63,15 +65,26 @@ export const RIYADH = { west: 46.45, south: 24.45, east: 47.0, north: 25.0 };
 const RIYADH_RECT = Rectangle.fromDegrees(RIYADH.west, RIYADH.south, RIYADH.east, RIYADH.north);
 const MAX_HEIGHT_M = 40000;
 
-/** Keep the camera above Riyadh (position clamped to the box, height capped). */
+let lockOn = false;
+let lockViewer: Viewer | null = null;
+
+/**
+ * Keep the camera above Riyadh (position clamped to the box, height capped). Switched on after the intro flight,
+ * so the opening shot can still start from the whole Earth.
+ */
+export function setRiyadhLock(on: boolean) {
+  lockOn = on;
+  if (lockViewer && !lockViewer.isDestroyed()) lockViewer.scene.screenSpaceCameraController.maximumZoomDistance = on ? MAX_HEIGHT_M : Number.POSITIVE_INFINITY;
+}
+
 function lockToRiyadh(viewer: Viewer) {
-  const ctl = viewer.scene.screenSpaceCameraController;
-  ctl.maximumZoomDistance = MAX_HEIGHT_M;
+  lockViewer = viewer;
+  lockOn = false;
   const carto = new Cartographic();
   viewer.scene.preUpdate.addEventListener(() => {
+    if (!lockOn) return;
     const cam = viewer.camera;
-    Cartographic.fromCartesian(cam.positionWC, undefined, carto);
-    if (!carto) return;
+    if (!Cartographic.fromCartesian(cam.positionWC, undefined, carto)) return;
     const lon = CesiumMath.toDegrees(carto.longitude);
     const lat = CesiumMath.toDegrees(carto.latitude);
     const cl = Math.min(RIYADH.east, Math.max(RIYADH.west, lon));
@@ -127,6 +140,9 @@ export function createViewer(container: HTMLElement): ViewerHandle {
   scene.globe.maximumScreenSpaceError = HQ ? 2 : 2.5;
   scene.screenSpaceCameraController.minimumZoomDistance = 12;
   lockToRiyadh(viewer);
+  // a small whole-Earth picture bundled with Cesium (offline, ~0.5 MB) for the opening shot from space;
+  // the detailed satellite imagery is only loaded for Riyadh
+  viewer.imageryLayers.add(ImageryLayer.fromProviderAsync(TileMapServiceImageryProvider.fromUrl(buildModuleUrl("Assets/Textures/NaturalEarthII"))));
 
   // Fixed late-afternoon sun in Riyadh (15:20 local) for consistent, warm lighting.
   viewer.clock.currentTime = JulianDate.fromIso8601("2026-11-24T12:20:00Z");

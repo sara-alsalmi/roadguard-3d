@@ -19,7 +19,7 @@ jobs:
         env:
           T: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
         run: |
-          for id in 1 2 96188; do
+          for id in 1 2 96188 2275207; do
             code=$(curl -s -o body.json -w "%{http_code}" -H "Origin: https://sara-alsalmi.github.io" -H "Referer: https://sara-alsalmi.github.io/roadguard-3d/" "https://api.cesium.com/v1/assets/$id/endpoint?access_token=$T")
             msg=$(python3 -c "import json;d=json.load(open('body.json'));print(d.get('message') or d.get('type') or 'ok')" 2>/dev/null || echo "?")
             echo "asset $id -> HTTP $code ($msg)"

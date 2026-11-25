@@ -231,7 +231,7 @@ function MapSource() {
   return (
     <div className="flex items-center gap-2 text-[11.5px] text-muted" data-testid="map-source">
       <span className="w-2 h-2 rounded-full" style={{ background: full ? "#30d158" : "#ff9f0a" }} />
-      {full ? "Full 3D city: Cesium terrain and buildings" : /unreachable/.test(info.terrain) ? "Light map: Cesium did not answer on this network" : "Light map (no Cesium token)"}
+      {/Google/.test(info.buildings) ? "Photorealistic 3D city (Google, via Cesium ion)" : full ? "Full 3D city: Cesium terrain and buildings" : /unreachable/.test(info.terrain) ? "Light map: Cesium did not answer on this network" : "Light map (no Cesium token)"}
     </div>
   );
 }

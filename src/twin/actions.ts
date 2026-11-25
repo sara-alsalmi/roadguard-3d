@@ -24,7 +24,8 @@ export function selectDamage(id: string | null, fly = true) {
   st().select(id);
   if (!id) return;
   const d = st().incidents.find((i) => i.id === id);
-  if (d && fly) void flyToLocation(d.lon, d.lat);
+  // close enough that the 3D damage is what you see
+  if (d && fly) void flyToLocation(d.lon, d.lat, { range: 22, pitch: -38, duration: 2 });
 }
 
 export function goOverview() {

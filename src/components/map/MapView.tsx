@@ -13,7 +13,6 @@ import { useEffect, useRef } from "react";
 import { useApp } from "../../store/appStore";
 import { selectDamage } from "../../twin/actions";
 import { hazardLayer } from "../twin/hazardLayer";
-import { healthLayer } from "../twin/healthLayer";
 import { cameraController } from "./cameraController";
 import { incidentLayer } from "./incidentLayer";
 import { createViewer } from "./viewerHost";
@@ -45,7 +44,6 @@ export function MapView() {
     }
     const { viewer } = handle;
     cameraController.attach(viewer);
-    healthLayer.attach(viewer);
     incidentLayer.attach(viewer);
     hazardLayer.attach(viewer);
     window.__rg = { viewer, camera: cameraController, store: useApp };
@@ -101,7 +99,6 @@ export function MapView() {
       handler.destroy();
       incidentLayer.detach();
       hazardLayer.detach();
-      healthLayer.detach();
       cameraController.detach();
       handle.destroy();
       if (window.__rg?.viewer === viewer) delete window.__rg;

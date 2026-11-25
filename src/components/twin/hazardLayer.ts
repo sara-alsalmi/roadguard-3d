@@ -1,5 +1,6 @@
 import {
   Cartesian3,
+  Color,
   CustomDataSource,
   DistanceDisplayCondition,
   HeadingPitchRoll,
@@ -15,10 +16,13 @@ import { nearestCorridor } from "../../utils/network";
 import { heightAt, terrainVersion } from "../map/terrain";
 
 const MODEL: Record<IncidentClass, { file: string; yaw: number; scale: number }> = {
-  pothole: { file: "models/pothole.glb", yaw: 0, scale: 1 },
-  barrier: { file: "models/barrier.glb", yaw: 0, scale: 1 },
-  sidewalk: { file: "models/sidewalk.glb", yaw: 90, scale: 1 },
+  // shown about 2x real size so the damage reads clearly on the satellite map (representative shapes, not scans)
+  pothole: { file: "models/pothole.glb", yaw: 0, scale: 2 },
+  barrier: { file: "models/barrier.glb", yaw: 0, scale: 1.6 },
+  sidewalk: { file: "models/sidewalk.glb", yaw: 90, scale: 1.6 },
 };
+
+const OUTLINE: Record<IncidentClass, string> = { pothole: "#ff9f0a", barrier: "#ffd60a", sidewalk: "#bf5af2" };
 
 /** The damage itself, as a 3D model on the road (visible when the camera is close). Representative shapes, not scans. */
 export class HazardLayer {
@@ -65,7 +69,10 @@ export class HazardLayer {
         model: {
           uri: asset(m.file),
           scale: m.scale,
-          distanceDisplayCondition: new DistanceDisplayCondition(0, 650),
+          distanceDisplayCondition: new DistanceDisplayCondition(0, 900),
+          // a thin outline in the class colour makes the 3D damage stand out from the asphalt
+          silhouetteColor: Color.fromCssColorString(OUTLINE[inc.cls]),
+          silhouetteSize: 1.5,
         },
       });
     }

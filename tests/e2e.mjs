@@ -31,13 +31,12 @@ const ents = (name) => page.evaluate((n) => window.__rg.viewer.dataSources._data
 check("Cesium canvas renders", (await page.locator(".cesium-widget canvas").count()) === 1);
 check("Starts empty", (await s()).n === 0);
 check("No vehicles, teams or operator buttons", (await page.locator('[data-testid="live-toggle"], [data-testid="assign-maintenance"], [data-testid="launch-mission"]').count()) === 0);
-check("Road health is drawn", (await ents("road-health")) > 20);
 
 await page.getByTestId("load-examples").click();
 await page.waitForTimeout(800);
 check("Examples are placed on the map", (await s()).n === 3);
 check("Each damage gets a 3D model", (await ents("hazards")) === 3);
-check("Healthy roads drop below 100%", !(await page.getByTestId("stat-healthy").innerText()).includes("100"));
+check("No coloured roads or danger circles", (await ents("road-health")) === 0 && (await page.evaluate(() => window.__rg.viewer.dataSources._dataSources.find((d) => d.name === "incident-fx").entities.values.filter((e) => e.id.startsWith("zone:")).length)) === 0);
 
 // upload: two photos of the same MOMRA case + a YOLO label, and one video
 const n1 = "DATA-WORKATTACH-FILE MOMRA-OPS-CS-WORK INC-21-06-038549!20210610T165255.438 GMT";

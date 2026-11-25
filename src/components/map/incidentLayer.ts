@@ -5,6 +5,7 @@ import {
   Color,
   ColorMaterialProperty,
   CustomDataSource,
+  DistanceDisplayCondition,
   Entity,
   NearFarScalar,
   PolylineGlowMaterialProperty,
@@ -92,6 +93,8 @@ export class IncidentLayer {
               verticalOrigin: VerticalOrigin.BOTTOM,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
               scaleByDistance: new NearFarScalar(250, 1, 7000, 0.5),
+              // far away the pin finds the damage; up close it disappears and the 3D damage itself is what you see
+              distanceDisplayCondition: new DistanceDisplayCondition(140, Number.MAX_VALUE),
             },
           }),
         );
@@ -114,40 +117,15 @@ export class IncidentLayer {
     }
     this.syncSelectionFx(s);
     this.syncDraft(s);
-    this.syncZones(s);
+    this.clearZones();
   }
 
   private zoneKey = new Map<string, string>();
-  /** Soft pulsing "danger zone" under every report that still needs attention (Predicted / New). */
-  private syncZones(s: AppState) {
-    const want = new Map<string, Incident>();
-    for (const i of s.incidents) if ((i.status === "predicted" || i.status === "new") && isVisible(i, s.filters)) want.set(`zone:${i.id}`, i);
-    for (const [id, key] of [...this.zoneKey]) {
-      if (!want.has(id) || key !== `${want.get(id)!.status}|${terrainVersion()}`) {
-        this.fx.entities.removeById(id);
-        this.zoneKey.delete(id);
-      }
-    }
-    for (const [id, i] of want) {
-      if (this.zoneKey.has(id)) continue;
-      const color = i.status === "new" ? "#ff453a" : "#ff9f0a";
-      const phase = (id.length * 397) % 1000;
-      this.fx.entities.add({
-        id,
-        position: this.position(i),
-        ellipse: {
-          semiMajorAxis: 22,
-          semiMinorAxis: 22,
-          material: new ColorMaterialProperty(new CallbackProperty(() => Color.fromCssColorString(color).withAlpha(0.16 + 0.1 * Math.sin(clockMs.t / (520 + phase * 0.2))), false) as never),
-          outline: true,
-          outlineColor: Color.fromCssColorString(color).withAlpha(0.8),
-          outlineWidth: 2,
-        },
-      });
-      this.zoneKey.set(id, `${i.status}|${terrainVersion()}`);
-    }
+  /** no circles on the ground: the damage is shown as itself (3D model) */
+  private clearZones() {
+    for (const id of this.zoneKey.keys()) this.fx.entities.removeById(id);
+    this.zoneKey.clear();
   }
-
   private draftFor = "";
   /** Marker for the location of a report that is being drafted (event location or manual pick). */
   private syncDraft(s: AppState) {
@@ -209,20 +187,9 @@ export class IncidentLayer {
     this.fx.entities.removeById("selection:ring");
     this.fx.entities.removeById("selection:beam");
     if (!sel) return;
-    const base = this.position(sel);
+    // a thin light beam above the opened damage (starts above it so it never covers the 3D model)
+    const base = Cartesian3.fromDegrees(sel.lon, sel.lat, heightAt(sel.lon, sel.lat) + 5);
     const top = Cartesian3.fromDegrees(sel.lon, sel.lat, heightAt(sel.lon, sel.lat) + 70);
-    this.fx.entities.add({
-      id: "selection:ring",
-      position: base,
-      ellipse: {
-        semiMajorAxis: 9,
-        semiMinorAxis: 9,
-        material: Color.fromCssColorString("#0a84ff").withAlpha(0.16),
-        outline: true,
-        outlineColor: Color.fromCssColorString("#0a84ff"),
-        outlineWidth: 2,
-      },
-    });
     this.fx.entities.add({
       id: "selection:beam",
       polyline: {

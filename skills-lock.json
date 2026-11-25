@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "skills": {
+    "cesiumjs-3d-tiles": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-3d-tiles/SKILL.md",
+      "computedHash": "a9e082dde6fe9aa47b9aa2ae282fcd177501f347bd1401e8aeda7b027c06deae"
+    },
+    "cesiumjs-camera": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-camera/SKILL.md",
+      "computedHash": "3bd6978a2fedcce8cc7e8234c350465c5b5c7a430e6a8e0889af76a8b95c1f4e"
+    },
+    "cesiumjs-entities": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-entities/SKILL.md",
+      "computedHash": "ebce3a2249c1690df245dad857d88df5988120b444e84f0482d412a10f51e2a2"
+    },
+    "cesiumjs-models-particles": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-models-particles/SKILL.md",
+      "computedHash": "3608ce5b53c6ed0a7e82c417574cc876dc5d314ef57d02771f74c7cfb21c562c"
+    },
+    "cesiumjs-spatial-math": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-spatial-math/SKILL.md",
+      "computedHash": "b50b200423328784cebeddc83e6f2db5f01c5245d4705308e9b28a2ff4a7e2fb"
+    },
+    "cesiumjs-terrain-environment": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-terrain-environment/SKILL.md",
+      "computedHash": "91ba385df8ec439cf19884929117abda933d18dbae22d37c904429254510a69c"
+    },
+    "cesiumjs-time-properties": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-time-properties/SKILL.md",
+      "computedHash": "8b206c95db72a86edffed74424d9bf7a08658db159005710d3b417ec9fcc7719"
+    },
+    "cesiumjs-viewer-setup": {
+      "source": "CesiumGS/cesiumjs-skills",
+      "commit": "5f4792c09c4496f214ba9679cac6d7b3b014dcdd",
+      "sourceType": "github",
+      "skillPath": "skills/cesiumjs-viewer-setup/SKILL.md",
+      "computedHash": "54c9c68c34e740fccd6e1c27c3ef52b6e166be0a20ca6b7ed43c2174ca7204bc"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "7991ed4fbecdac23f47c1a40c243e00a212a9e7f3604db93959b3ae11dffe299"
+    },
+    "webapp-testing": {
+      "source": "anthropics/skills",
+      "commit": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "sourceType": "github",
+      "skillPath": "skills/webapp-testing/SKILL.md",
+      "computedHash": "48cd9a742a59250edec6db89cf081ef5465f365e2133f6d6c5e29c380b754b7d"
+    }
+  }
+}

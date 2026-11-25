@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fc4e4"/><stop offset="1" stop-color="#f3e6cb"/></linearGradient>
+  <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6a6f78"/><stop offset="1" stop-color="#3b3f46"/></linearGradient>
+  <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9c29a"/><stop offset="1" stop-color="#b79c70"/></linearGradient>
+  <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .22 0"/></filter>
+  <radialGradient id="hole" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#0d0e11"/><stop offset=".7" stop-color="#22252a"/><stop offset="1" stop-color="#3a3e45"/></radialGradient>
+</defs>
+<rect width="1200" height="800" fill="url(#sky)"/>
+<rect x="-20" y="210" width="70" height="64" fill="#9aa8b6" opacity="0.35"/><rect x="85" y="120" width="92" height="154" fill="#9aa8b6" opacity="0.43"/><rect x="190" y="180" width="114" height="94" fill="#9aa8b6" opacity="0.51"/><rect x="295" y="60" width="70" height="214" fill="#9aa8b6" opacity="0.59"/><rect x="400" y="140" width="92" height="134" fill="#9aa8b6" opacity="0.35"/><rect x="505" y="200" width="114" height="74" fill="#9aa8b6" opacity="0.43"/><rect x="610" y="90" width="70" height="184" fill="#9aa8b6" opacity="0.51"/><rect x="715" y="160" width="92" height="114" fill="#9aa8b6" opacity="0.59"/><rect x="820" y="30" width="114" height="244" fill="#9aa8b6" opacity="0.35"/><rect x="925" y="175" width="70" height="99" fill="#9aa8b6" opacity="0.43"/><rect x="1030" y="110" width="92" height="164" fill="#9aa8b6" opacity="0.51"/><rect x="1135" y="195" width="114" height="79" fill="#9aa8b6" opacity="0.59"/>
+<rect y="270" width="1200" height="530" fill="url(#sand)"/>
+<polygon points="560,270 640,270 1500,800 -300,800" fill="url(#road)"/>
+<polygon points="560,270 640,270 1500,800 -300,800" filter="url(#grain)"/>
+<polygon points="562,270 565,270 -230,800 -280,800" fill="#ddd9ca" opacity=".85"/>
+<polygon points="635,270 638,270 1480,800 1430,800" fill="#ddd9ca" opacity=".85"/>
+<polygon points="598.8,270 601.2,270 601.343694122602,273.4617220445021 598.656305877398,273.4617220445021" fill="#e8e6dc" opacity="0.92"/><polygon points="598.3785110786897,280.15405128611286 601.6214889213103,280.15405128611286 602.1276480170004,292.3478840459183 597.8723519829996,292.3478840459183" fill="#e8e6dc" opacity="0.92"/><polygon points="597.3322903285208,305.3584602674531 602.6677096714792,305.3584602674531 603.4727857020918,324.7534737322099 596.5272142979082,324.7534737322099" fill="#e8e6dc" opacity="0.92"/><polygon points="595.7548799253843,343.35971088846935 604.2451200746157,343.35971088846935 605.3228468198125,369.3231279318476 594.6771531801875,369.3231279318476" fill="#e8e6dc" opacity="0.92"/><polygon points="593.6891380749545,393.12531001245964 606.3108619250455,393.12531001245964 607.6447589427862,425.2601018034851 592.3552410572138,425.2601018034851" fill="#e8e6dc" opacity="0.92"/><polygon points="591.1628350342204,453.9862469028735 608.8371649657796,453.9862469028735 610.4153860520478,492.0070276175144 589.5846139479522,492.0070276175144" fill="#e8e6dc" opacity="0.92"/><polygon points="588.1962760149559,525.4533505487911 611.8037239850441,525.4533505487911 613.6171092959494,569.1394512205994 586.3828907040506,569.1394512205994" fill="#e8e6dc" opacity="0.92"/><polygon points="584.805330845093,607.1443023682145 615.194669154907,607.1443023682145 617.2358016879036,656.3170406631327 582.7641983120964,656.3170406631327" fill="#e8e6dc" opacity="0.92"/><polygon points="581.0029450888917,698.7472319494266 618.9970549111083,698.7472319494266 621.2597340247577,753.2572287782518 578.7402659752423,753.2572287782518" fill="#e8e6dc" opacity="0.92"/>
+
+  <ellipse cx="640" cy="626" rx="134" ry="50" fill="#2a2d32"/>
+  <ellipse cx="640" cy="620" rx="118" ry="42" fill="url(#hole)"/>
+  <ellipse cx="624" cy="612" rx="62" ry="17" fill="#07080a" opacity=".85"/>
+  <ellipse cx="640" cy="616" rx="122" ry="45" fill="none" stroke="#7d828a" stroke-width="4" opacity=".7"/>
+  <path d="M520 600 L470 585 L430 560" stroke="#16181b" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/><path d="M760 598 L815 578 L850 560" stroke="#16181b" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/><path d="M650 664 L662 700 L640 740" stroke="#16181b" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/><path d="M580 580 L560 540 L566 505" stroke="#16181b" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>
+
+<g font-family="IBM Plex Sans, Arial, sans-serif" font-size="20" font-weight="600">
+  <rect x="18" y="748" width="360" height="34" rx="8" fill="#0a1220" opacity=".78"/>
+  <text x="32" y="771" fill="#fcd68a">DEMO ILLUSTRATION · NOT A DATASET PHOTO</text>
+</g>
+</svg>

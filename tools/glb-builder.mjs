@@ -82,12 +82,19 @@ export class Builder {
       if (!p.idx.length) continue;
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
       for (let i = 0; i < p.pos.length; i += 3) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], p.pos[i + k]); max[k] = Math.max(max[k], p.pos[i + k]); }
-      const pv = push(p.pos, Float32Array, 34962), nv = push(p.nor, Float32Array, 34962), iv = push(p.idx, Uint16Array, 34963);
+      const big = p.pos.length / 3 > 65535;
+      const pv = push(p.pos, Float32Array, 34962), nv = push(p.nor, Float32Array, 34962), iv = push(p.idx, big ? Uint32Array : Uint16Array, 34963);
       accs.push({ bufferView: pv, componentType: 5126, count: p.pos.length / 3, type: "VEC3", min, max });
       accs.push({ bufferView: nv, componentType: 5126, count: p.nor.length / 3, type: "VEC3" });
-      accs.push({ bufferView: iv, componentType: 5123, count: p.idx.length, type: "SCALAR" });
+      accs.push({ bufferView: iv, componentType: big ? 5125 : 5123, count: p.idx.length, type: "SCALAR" });
       const a = accs.length - 3;
-      prims.push({ attributes: { POSITION: a, NORMAL: a + 1 }, indices: a + 2, material: m, mode: 4 });
+      const attributes = { POSITION: a, NORMAL: a + 1 };
+      if (p.col && p.col.length === p.pos.length) {
+        const cv = push(p.col, Float32Array, 34962);
+        accs.push({ bufferView: cv, componentType: 5126, count: p.col.length / 3, type: "VEC3" });
+        attributes.COLOR_0 = accs.length - 1;
+      }
+      prims.push({ attributes, indices: a + 2, material: m, mode: 4 });
     }
     const json = { asset: { version: "2.0", generator: "roadguard gen-vehicles" }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ name, mesh: 0 }], meshes: [{ primitives: prims }], materials: this.mats, accessors: accs, bufferViews: views, buffers: [{ byteLength: offset }] };
     let js = Buffer.from(JSON.stringify(json));
@@ -113,4 +120,33 @@ Builder.prototype.rbox = function (m, cx, cy, cz, sx, sy, sz, ang) {
 Builder.prototype.slab = function (m, cx, cz, sx, sz, h, lift) {
   const x0 = cx - sx / 2, x1 = cx + sx / 2, z0 = cz - sz / 2, z1 = cz + sz / 2;
   this.hex(m, [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]], [[x0, h, z0], [x1, h + lift, z0], [x1, h + lift, z1], [x0, h, z1]]);
+};
+
+
+/** Material whose colour comes from the vertices (COLOR_0): use it only with mesh(). */
+Builder.prototype.vmat = function (name, { metal = 0, rough = 0.9 } = {}) {
+  const m = this.mat(name, [1, 1, 1], { metal, rough });
+  this.mats[m].doubleSided = true;
+  this.prims.get(m).col = [];
+  return m;
+};
+
+/** Triangle mesh with per-vertex colours and smooth normals. verts [[x,y,z]], cols [[r,g,b]], tris [[a,b,c]] (counter-clockwise from outside). */
+Builder.prototype.mesh = function (m, verts, cols, tris) {
+  const p = this.prims.get(m);
+  const base = p.pos.length / 3;
+  const nor = verts.map(() => [0, 0, 0]);
+  for (const [a, b, c] of tris) {
+    const A = verts[a], B = verts[b], C = verts[c];
+    const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    for (const k of [a, b, c]) for (let i = 0; i < 3; i++) nor[k][i] += n[i];
+  }
+  verts.forEach((q, i) => {
+    const n = nor[i], l = Math.hypot(...n) || 1;
+    p.pos.push(...q);
+    p.nor.push(n[0] / l, n[1] / l, n[2] / l);
+    p.col.push(...cols[i].map((v) => Math.pow(v, 2.2))); // glTF vertex colours are linear
+  });
+  for (const [a, b, c] of tris) p.idx.push(base + a, base + b, base + c);
 };

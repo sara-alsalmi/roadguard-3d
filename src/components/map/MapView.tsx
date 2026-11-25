@@ -84,6 +84,18 @@ export function MapView() {
       } else if (cur) useApp.setState({ hover: null });
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
+    // Trackpad pinch (sent by the browser as ctrl + wheel) zooms the map instead of the page.
+    // Plain two-finger scroll and the mouse wheel already zoom through Cesium.
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const h = Math.max(20, viewer.camera.positionCartographic.height);
+      const amount = Math.min(0.35, Math.abs(e.deltaY) * 0.012) * h;
+      if (e.deltaY < 0) viewer.camera.zoomIn(amount);
+      else viewer.camera.zoomOut(amount);
+    };
+    viewer.canvas.addEventListener("wheel", onWheel, { passive: false });
+
     // ----------------------------------------------------------- startup
     let cancelled = false;
     void handle.ready.then(() => {
@@ -97,6 +109,7 @@ export function MapView() {
     return () => {
       cancelled = true;
       handler.destroy();
+      viewer.canvas.removeEventListener("wheel", onWheel);
       incidentLayer.detach();
       hazardLayer.detach();
       cameraController.detach();

@@ -8,7 +8,6 @@ import { MapView } from "./components/map/MapView";
 import { EMBED } from "./embed/bridge";
 import { useApp } from "./store/appStore";
 import { selectDamage } from "./twin/actions";
-import { TwinCard } from "./twin/TwinCard";
 import { TwinPanel } from "./twin/TwinPanel";
 
 const RIGHT_W = 360;
@@ -40,8 +39,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      <div className="rg-in-left absolute left-4 top-4 z-20"><TwinCard /></div>
 
       <aside className="rg-in-right absolute right-4 top-4 bottom-4 z-20 glass flex flex-col" style={{ width: RIGHT_W }} data-testid="right-panel">
         <div className="scroll flex-1 min-h-0 p-5"><TwinPanel /></div>

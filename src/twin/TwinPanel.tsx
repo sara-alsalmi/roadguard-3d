@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Crosshair, Film, RotateCw, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crosshair, Film, RotateCw, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CLASS_META } from "../data/config";
 import { SAMPLES } from "../data/samples";
@@ -19,8 +19,16 @@ function Overview() {
   const damages = useApp((s) => s.incidents);
   const [dataset, setDataset] = useState<Awaited<ReturnType<typeof datasetManifest>>>(null);
   useEffect(() => { void datasetManifest().then(setDataset); }, []);
+  const files = damages.reduce((n, d) => n + (d.media?.length ?? 1), 0);
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl grid place-items-center bg-white/12 shrink-0"><ShieldCheck size={19} /></div>
+        <div className="min-w-0">
+          <h1 className="h-display text-[16px] font-semibold leading-none">RoadGuard 3D</h1>
+          <div className="text-[11.5px] text-muted mt-1" data-testid="stat-damages">Digital twin of Riyadh roads · {damages.length} damages · {files} files</div>
+        </div>
+      </div>
       {dataset && (
         <button className="btn btn-primary w-full justify-center" onClick={() => { loadDatasetCases(dataset); goOverview(); }} data-testid="load-dataset">
           Show {dataset.cases.length} real dataset cases

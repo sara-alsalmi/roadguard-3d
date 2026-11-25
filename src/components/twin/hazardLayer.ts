@@ -1,6 +1,8 @@
 import {
   Cartesian3,
-  Color,
+  ClippingPolygon,
+  ClippingPolygonCollection,
+  Matrix4,
   CustomDataSource,
   DistanceDisplayCondition,
   HeadingPitchRoll,
@@ -16,13 +18,15 @@ import { nearestCorridor } from "../../utils/network";
 import { heightAt, terrainVersion } from "../map/terrain";
 
 const MODEL: Record<IncidentClass, { file: string; yaw: number; scale: number }> = {
-  // shown about 2x real size so the damage reads clearly on the satellite map (representative shapes, not scans)
-  pothole: { file: "models/pothole.glb", yaw: 0, scale: 2 },
-  barrier: { file: "models/barrier.glb", yaw: 0, scale: 1.6 },
-  sidewalk: { file: "models/sidewalk.glb", yaw: 90, scale: 1.6 },
+  // close to real size (representative shapes modelled on the dataset photos, not scans)
+  pothole: { file: "models/pothole.glb", yaw: 0, scale: 1.3 },
+  barrier: { file: "models/barrier.glb", yaw: 0, scale: 1 },
+  sidewalk: { file: "models/sidewalk.glb", yaw: 0, scale: 1 },
 };
 
-const OUTLINE: Record<IncidentClass, string> = { pothole: "#ff9f0a", barrier: "#ffd60a", sidewalk: "#bf5af2" };
+/** outline of the pothole bowl in model units (same formula as tools/gen-hazards.mjs) */
+const potholeEdge = (a: number) =>
+  0.62 * (1 + 0.17 * Math.sin(3 * a + 1.3) + 0.09 * Math.sin(5 * a + 0.4) + 0.05 * Math.sin(11 * a)) * (Math.abs(Math.cos(a)) * 0.35 + 1);
 
 /** The damage itself, as a 3D model on the road (visible when the camera is close). Representative shapes, not scans. */
 export class HazardLayer {
@@ -39,16 +43,50 @@ export class HazardLayer {
     this.unsub = useApp.subscribe((s) => this.sync(s));
   }
 
+  /** Holes cut in the ground under potholes and digs, so their below-ground part (the actual depth) is visible. */
+  private holesKey = "";
+  private syncHoles(s: AppState) {
+    const v = this.viewer;
+    if (!v) return;
+    const list = s.incidents.filter((i) => i.status !== "resolved" && (i.cls === "pothole" || i.cls === "barrier"));
+    const key = list.map((i) => `${i.id}:${i.lon}:${i.lat}`).join("|") + `|${terrainVersion()}`;
+    if (key === this.holesKey) return;
+    this.holesKey = key;
+    const polygons = list.map((inc) => {
+      const pos = Cartesian3.fromDegrees(inc.lon, inc.lat, heightAt(inc.lon, inc.lat));
+      const sn = nearestCorridor(inc.lon, inc.lat);
+      const b = CesiumMath.toRadians(smoothBearing(sn.corridor.pl, sn.s, 6));
+      const enu = Transforms.eastNorthUpToFixedFrame(pos);
+      // local outline: x forward along the road, z to the right (metres, already scaled)
+      const local: [number, number][] =
+        inc.cls === "pothole"
+          ? Array.from({ length: 48 }, (_, k) => { const a = (k / 48) * Math.PI * 2; const r = potholeEdge(a) * 1.12 * MODEL.pothole.scale; return [Math.cos(a) * r, Math.sin(a) * r] as [number, number]; })
+          : [[-1.75, -0.95], [1.75, -0.95], [1.75, 0.95], [-1.75, 0.95]];
+      const positions = local.map(([x, z]) => {
+        const e = x * Math.sin(b) + z * Math.cos(b);
+        const n = x * Math.cos(b) - z * Math.sin(b);
+        return Matrix4.multiplyByPoint(enu, new Cartesian3(e, n, 0), new Cartesian3());
+      });
+      return new ClippingPolygon({ positions });
+    });
+    v.scene.globe.clippingPolygons = new ClippingPolygonCollection({ polygons });
+  }
+
   detach() {
     this.unsub?.();
     this.unsub = null;
-    if (this.viewer && !this.viewer.isDestroyed()) this.viewer.dataSources.remove(this.ds, true);
+    if (this.viewer && !this.viewer.isDestroyed()) {
+      this.viewer.dataSources.remove(this.ds, true);
+      this.viewer.scene.globe.clippingPolygons = undefined as never;
+    }
+    this.holesKey = "";
     this.ds = new CustomDataSource("hazards");
     this.sig.clear();
     this.viewer = null;
   }
 
   private sync(s: AppState) {
+    this.syncHoles(s);
     const live = new Set<string>();
     for (const inc of s.incidents) {
       if (inc.status === "resolved") continue;
@@ -70,9 +108,6 @@ export class HazardLayer {
           uri: asset(m.file),
           scale: m.scale,
           distanceDisplayCondition: new DistanceDisplayCondition(0, 900),
-          // a thin outline in the class colour makes the 3D damage stand out from the asphalt
-          silhouetteColor: Color.fromCssColorString(OUTLINE[inc.cls]),
-          silhouetteSize: 1.5,
         },
       });
     }

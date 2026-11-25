@@ -29,6 +29,7 @@ jobs:
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
           VITE_CESIUM_ION_TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+          VITE_ION_PROXY: ${{ vars.VITE_ION_PROXY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

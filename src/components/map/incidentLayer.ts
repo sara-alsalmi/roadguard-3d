@@ -17,6 +17,7 @@ import type { Incident } from "../../types";
 import { clusterIcon, markerIcon } from "./markerIcons";
 import { clockMs } from "../../utils/pulse";
 import { heightAt, terrainVersion } from "./terrain";
+import { damageGround } from "../twin/hazardLayer";
 
 /** Keeps Cesium entities in sync with the incident list in the store (one-way: store -> map). */
 export class IncidentLayer {
@@ -64,7 +65,7 @@ export class IncidentLayer {
   }
 
   private position(i: Incident) {
-    return Cartesian3.fromDegrees(i.lon, i.lat, heightAt(i.lon, i.lat) + 0.4);
+    return Cartesian3.fromDegrees(i.lon, i.lat, damageGround(i) + 0.4);
   }
 
   private sync(s: AppState) {
@@ -188,8 +189,9 @@ export class IncidentLayer {
     this.fx.entities.removeById("selection:beam");
     if (!sel) return;
     // a thin light beam above the opened damage (starts above it so it never covers the 3D model)
-    const base = Cartesian3.fromDegrees(sel.lon, sel.lat, heightAt(sel.lon, sel.lat) + 5);
-    const top = Cartesian3.fromDegrees(sel.lon, sel.lat, heightAt(sel.lon, sel.lat) + 70);
+    const g = damageGround(sel);
+    const base = Cartesian3.fromDegrees(sel.lon, sel.lat, g + 5);
+    const top = Cartesian3.fromDegrees(sel.lon, sel.lat, g + 70);
     this.fx.entities.add({
       id: "selection:beam",
       polyline: {

@@ -4,14 +4,15 @@ import { smoothBearing } from "../utils/geo";
 import { nearestCorridor } from "../utils/network";
 import { cameraController } from "../components/map/cameraController";
 import { heightAt } from "../components/map/terrain";
+import { damageGround } from "../components/twin/hazardLayer";
 
 const st = () => useApp.getState();
 
 /** fly the camera to a spot, looking along the road */
-export function flyToLocation(lon: number, lat: number, opts?: { range?: number; pitch?: number; duration?: number }) {
+export function flyToLocation(lon: number, lat: number, opts?: { range?: number; pitch?: number; duration?: number; ground?: number }) {
   const sn = nearestCorridor(lon, lat);
   const bearing = smoothBearing(sn.corridor.pl, sn.s);
-  return cameraController.flyToPoint(Cartesian3.fromDegrees(lon, lat, heightAt(lon, lat) + 1), {
+  return cameraController.flyToPoint(Cartesian3.fromDegrees(lon, lat, (opts?.ground ?? heightAt(lon, lat)) + 1), {
     heading: bearing + 28,
     pitch: opts?.pitch ?? -32,
     range: opts?.range ?? 85,
@@ -25,7 +26,7 @@ export function selectDamage(id: string | null, fly = true) {
   if (!id) return;
   const d = st().incidents.find((i) => i.id === id);
   // close enough that the 3D damage is what you see
-  if (d && fly) void flyToLocation(d.lon, d.lat, { range: 22, pitch: -38, duration: 2 });
+  if (d && fly) void flyToLocation(d.lon, d.lat, { range: 22, pitch: -38, duration: 2, ground: damageGround(d) });
 }
 
 export function goOverview() {

@@ -14,6 +14,7 @@ import {
   Rectangle,
   IonGeocodeProviderType,
   IonImageryProvider,
+  Resource,
   Ion,
   JulianDate,
   ScreenSpaceEventType,
@@ -44,11 +45,14 @@ const LOW = typeof location !== "undefined" && new URLSearchParams(location.sear
 const HQ = typeof location !== "undefined" && new URLSearchParams(location.search).has("hq");
 
 /** true when the Cesium ion API answers within `ms` (any HTTP answer counts; only a timeout or network error fails). */
+/** Cesium ion API base: the relay when one is configured, else Cesium directly */
+const ionApi = () => (CONFIG.ionProxy ? `${CONFIG.ionProxy}/api/` : "https://api.cesium.com/");
+
 async function ionReachable(token: string, ms = 6000): Promise<boolean> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   try {
-    await fetch(`https://api.cesium.com/v1/assets/1/endpoint?access_token=${encodeURIComponent(token)}`, { signal: ctl.signal });
+    await fetch(`${ionApi()}v1/assets/1/endpoint?access_token=${encodeURIComponent(token)}`, { signal: ctl.signal });
     return true;
   } catch {
     return false;
@@ -98,6 +102,10 @@ function lockToRiyadh(viewer: Viewer) {
   });
 }
 
+/** Google Photorealistic 3D Tiles, when they are loaded (through Cesium ion asset 2275207). */
+export const photo: { tileset: Cesium3DTileset | null } = { tileset: null };
+const GOOGLE_P3DT_ION_ASSET = 2275207;
+
 /** Create the single Cesium viewer. Throws if WebGL is unavailable. */
 export function createViewer(container: HTMLElement): ViewerHandle {
   if (typeof location !== "undefined" && new URLSearchParams(location.search).has("forcefallback")) {
@@ -106,6 +114,7 @@ export function createViewer(container: HTMLElement): ViewerHandle {
   let hasIon = !!CONFIG.ionToken;
   const useGoogle = CONFIG.enableGoogle3D && !!CONFIG.googleKey;
   if (hasIon) Ion.defaultAccessToken = CONFIG.ionToken;
+  if (hasIon && CONFIG.ionProxy) Ion.defaultServer = new Resource({ url: ionApi() });
 
   const viewer = new Viewer(container, {
     baseLayer: false,
@@ -177,7 +186,8 @@ export function createViewer(container: HTMLElement): ViewerHandle {
     }
     // ------------------------------------------------------------- imagery
     try {
-      if (hasIon) {
+      // through the relay only terrain and buildings come from ion; imagery stays on Esri (Bing tiles are not relayed)
+      if (hasIon && !CONFIG.ionProxy) {
         // plain aerial (no road shields / numbers) so the hazards stay the focus; district names come from the Esri layer below
         const layer = ImageryLayer.fromProviderAsync(IonImageryProvider.fromAssetId(2), { rectangle: RIYADH_RECT });
         viewer.imageryLayers.add(layer);
@@ -239,6 +249,22 @@ export function createViewer(container: HTMLElement): ViewerHandle {
         console.warn("[RoadGuard] Google 3D Tiles unavailable", e);
       }
     }
+    // Google-Earth-like city (photographed 3D mesh of buildings, trees, cars) through Cesium ion.
+    // Needs the asset in your ion account and allowed for the token; otherwise this quietly falls back to OSM buildings.
+    if (!buildingsDone && hasIon && !CONFIG.ionProxy) {
+      try {
+        const g = await Cesium3DTileset.fromIonAssetId(GOOGLE_P3DT_ION_ASSET, { maximumScreenSpaceError: HQ ? 8 : 16 });
+        if (!disposed) {
+          scene.primitives.add(g);
+          scene.globe.show = false; // the photographed mesh already contains the ground
+          photo.tileset = g;
+          patchInfo({ buildings: "Google Photorealistic 3D Tiles (Cesium ion)" });
+          buildingsDone = true;
+        }
+      } catch (e) {
+        console.warn("[RoadGuard] Google Photorealistic 3D Tiles not available on this token; using OSM buildings", e);
+      }
+    }
     if (!buildingsDone && hasIon) {
       try {
         const osm: Cesium3DTileset = await createOsmBuildingsAsync();
@@ -282,6 +308,7 @@ export function createViewer(container: HTMLElement): ViewerHandle {
     ready,
     destroy: () => {
       disposed = true;
+      photo.tileset = null;
       if (!viewer.isDestroyed()) viewer.destroy();
     },
   };

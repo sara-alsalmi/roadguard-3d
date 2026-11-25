@@ -14,6 +14,8 @@ export const CONFIG = {
   ionToken: ((env.VITE_CESIUM_ION_TOKEN as string | undefined) ?? "").trim(),
   googleKey: ((env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? "").trim(),
   enableGoogle3D: env.VITE_ENABLE_GOOGLE_3D_TILES === "true",
+  /** optional relay for networks that cannot reach Cesium ion directly (see relay/worker.js) */
+  ionProxy: ((env.VITE_ION_PROXY as string | undefined) ?? "").trim().replace(/\/$/, ""),
   inferenceBase: ((env.VITE_INFERENCE_API_URL as string | undefined) ?? "").replace(/\/$/, ""),
 };
 

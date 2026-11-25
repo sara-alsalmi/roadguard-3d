@@ -1,5 +1,6 @@
 import {
   Cartesian3,
+  Cartographic,
   ClippingPolygon,
   ClippingPolygonCollection,
   Matrix4,
@@ -16,6 +17,8 @@ import { asset } from "../../utils/asset";
 import { smoothBearing } from "../../utils/geo";
 import { nearestCorridor } from "../../utils/network";
 import { heightAt, terrainVersion } from "../map/terrain";
+import { photo } from "../map/viewerHost";
+import type { Incident } from "../../types";
 
 const MODEL: Record<IncidentClass, { file: string; yaw: number; scale: number }> = {
   // close to real size (representative shapes modelled on the dataset photos, not scans)
@@ -23,6 +26,10 @@ const MODEL: Record<IncidentClass, { file: string; yaw: number; scale: number }>
   barrier: { file: "models/barrier.glb", yaw: 0, scale: 1 },
   sidewalk: { file: "models/sidewalk.glb", yaw: 0, scale: 1 },
 };
+
+/** ground height under each damage on the photographed 3D city (sampled around the damage, outside its hole) */
+const ground = new Map<string, number>();
+export const damageGround = (i: Pick<Incident, "id" | "lon" | "lat">) => ground.get(i.id) ?? heightAt(i.lon, i.lat);
 
 /** outline of the pothole bowl in model units (same formula as tools/gen-hazards.mjs) */
 const potholeEdge = (a: number) =>
@@ -49,11 +56,11 @@ export class HazardLayer {
     const v = this.viewer;
     if (!v) return;
     const list = s.incidents.filter((i) => i.status !== "resolved" && (i.cls === "pothole" || i.cls === "barrier"));
-    const key = list.map((i) => `${i.id}:${i.lon}:${i.lat}`).join("|") + `|${terrainVersion()}`;
+    const key = list.map((i) => `${i.id}:${i.lon}:${i.lat}:${ground.get(i.id) ?? ""}`).join("|") + `|${terrainVersion()}|${photo.tileset ? 1 : 0}`;
     if (key === this.holesKey) return;
     this.holesKey = key;
     const polygons = list.map((inc) => {
-      const pos = Cartesian3.fromDegrees(inc.lon, inc.lat, heightAt(inc.lon, inc.lat));
+      const pos = Cartesian3.fromDegrees(inc.lon, inc.lat, damageGround(inc));
       const sn = nearestCorridor(inc.lon, inc.lat);
       const b = CesiumMath.toRadians(smoothBearing(sn.corridor.pl, sn.s, 6));
       const enu = Transforms.eastNorthUpToFixedFrame(pos);
@@ -70,6 +77,28 @@ export class HazardLayer {
       return new ClippingPolygon({ positions });
     });
     v.scene.globe.clippingPolygons = new ClippingPolygonCollection({ polygons });
+    // the photographed city has its own ground: cut the same holes in it
+    if (photo.tileset) photo.tileset.clippingPolygons = new ClippingPolygonCollection({ polygons: polygons.map((p) => new ClippingPolygon({ positions: p.positions })) });
+  }
+
+  /** height of the photographed ground around a damage (a ring outside its hole, so the cut never affects it) */
+  private async sampleGround(inc: Incident) {
+    const v = this.viewer;
+    if (!v || !photo.tileset) return;
+    ground.set(inc.id, heightAt(inc.lon, inc.lat)); // placeholder while sampling
+    const R = 2.6 / 111320;
+    const pts = Array.from({ length: 6 }, (_, k) => {
+      const a = (k / 6) * Math.PI * 2;
+      return Cartographic.fromDegrees(inc.lon + (Math.cos(a) * R) / Math.cos((inc.lat * Math.PI) / 180), inc.lat + Math.sin(a) * R);
+    });
+    try {
+      const got = await v.scene.sampleHeightMostDetailed(pts, this.ds.entities.values as never);
+      const hs = got.map((c) => c?.height ?? NaN).filter((h) => Number.isFinite(h)).sort((a, b) => a - b);
+      if (hs.length) ground.set(inc.id, hs[Math.floor(hs.length / 2)]);
+    } catch (e) {
+      console.warn("[RoadGuard] ground sampling failed", e);
+    }
+    this.sync(useApp.getState());
   }
 
   detach() {
@@ -92,12 +121,13 @@ export class HazardLayer {
       if (inc.status === "resolved") continue;
       const id = `hazard:${inc.id}`;
       live.add(id);
-      const sig = `${inc.cls}|${inc.lon}|${inc.lat}|${terrainVersion()}`;
+      const sig = `${inc.cls}|${inc.lon}|${inc.lat}|${terrainVersion()}|${ground.get(inc.id) ?? ""}|${photo.tileset ? 1 : 0}`;
       if (this.sig.get(id) === sig) continue;
       this.sig.set(id, sig);
       this.ds.entities.removeById(id);
       const m = MODEL[inc.cls];
-      const pos = Cartesian3.fromDegrees(inc.lon, inc.lat, heightAt(inc.lon, inc.lat) + 0.03);
+      if (photo.tileset && !ground.has(inc.id)) void this.sampleGround(inc);
+      const pos = Cartesian3.fromDegrees(inc.lon, inc.lat, damageGround(inc) + 0.03);
       const sn = nearestCorridor(inc.lon, inc.lat);
       const bearing = smoothBearing(sn.corridor.pl, sn.s, 6);
       this.ds.entities.add({

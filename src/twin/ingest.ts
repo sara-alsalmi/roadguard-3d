@@ -10,6 +10,8 @@ import { CLASS_META } from "../data/config";
 import { useApp } from "../store/appStore";
 import type { Annotation, Incident, IncidentClass, MediaItem } from "../types";
 import { corridorLocation, NETWORK } from "../utils/network";
+import { distanceM } from "../utils/geo";
+import { asset } from "../utils/asset";
 
 export const CLASSES: IncidentClass[] = ["pothole", "barrier", "sidewalk"];
 /** class order of the Saudi visual-pollution dataset (dataset.yaml: names: ['barriers', 'sidewalks', 'pothole']) */
@@ -53,12 +55,23 @@ const majority = (a: Annotation[]): IncidentClass | undefined => {
   return [...n.entries()].sort((p, q) => q[1] - p[1])[0]?.[0];
 };
 
-/** a random spot on one of the real demo roads (simulated: the images carry no GPS) */
+const MIN_GAP_M = 28;
+
+/** a random spot on one of the real demo roads, away from the damages already there (simulated: no GPS) */
 function simulatedSpot(cls: IncidentClass): [number, number] {
-  const c = NETWORK[Math.floor(Math.random() * NETWORK.length)];
-  const s = 40 + Math.random() * Math.max(10, c.pl.total - 80);
-  const lateral = cls === "sidewalk" ? 8 : Math.random() * 3 - 0.5;
-  return corridorLocation(c.id, s, lateral);
+  const taken = st().incidents.map((i) => [i.lon, i.lat] as [number, number]);
+  let best: [number, number] = [0, 0];
+  let bestGap = -1;
+  for (let t = 0; t < 40; t++) {
+    const c = NETWORK[Math.floor(Math.random() * NETWORK.length)];
+    const s = 40 + Math.random() * Math.max(10, c.pl.total - 80);
+    const lateral = cls === "sidewalk" ? 8 : Math.random() * 3 - 0.5;
+    const p = corridorLocation(c.id, s, lateral);
+    const gap = taken.length ? Math.min(...taken.map((q) => distanceM(p, q))) : Infinity;
+    if (gap >= MIN_GAP_M) return p;
+    if (gap > bestGap) { bestGap = gap; best = p; }
+  }
+  return best;
 }
 
 export interface NewDamage {
@@ -135,4 +148,34 @@ export async function ingestFiles(files: File[], fallback: IncidentClass): Promi
     );
   }
   return placed;
+}
+
+interface DatasetManifest {
+  source: string;
+  cases: { caseId: string; cls: IncidentClass; media: { type: "image"; file: string; name: string; annotations: Annotation[]; capturedAt?: string | null }[] }[];
+}
+
+/** Real dataset cases copied by tools/import_dataset.py into public/dataset (null when that folder is absent). */
+export async function datasetManifest(): Promise<DatasetManifest | null> {
+  try {
+    const r = await fetch(asset("dataset/manifest.json"), { cache: "no-store" });
+    if (!r.ok || !(r.headers.get("content-type") ?? "").includes("json")) return null;
+    const m = (await r.json()) as DatasetManifest;
+    return Array.isArray(m.cases) && m.cases.length ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadDatasetCases(m: DatasetManifest) {
+  for (const c of m.cases) {
+    if (st().incidents.some((i) => i.groupKey === c.caseId)) continue;
+    placeDamage({
+      cls: c.cls,
+      groupKey: c.caseId,
+      source: "Dataset photo · dataset labels",
+      media: c.media.map((x) => ({ type: "image", url: asset(`dataset/${x.file}`), name: x.name, annotations: x.annotations, capturedAt: x.capturedAt ?? undefined })),
+    });
+  }
+  st().set({ alert: null });
 }

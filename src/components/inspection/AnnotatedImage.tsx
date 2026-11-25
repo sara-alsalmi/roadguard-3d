@@ -76,7 +76,7 @@ export function AnnotatedImage({ src, annotations, showBoxes, drawClass, onDraw,
               >
                 {CLASS_META[a.cls].label}
                 {typeof a.confidence === "number" ? ` · ${(a.confidence * 100).toFixed(0)}%` : ""}
-                {a.source === "demo" ? " · DEMO" : a.source === "manual" ? " · MANUAL" : ""}
+                {a.source === "demo" ? " · DEMO" : a.source === "manual" ? " · LABEL" : typeof a.confidence === "number" ? ` · ${Math.round(a.confidence * 100)}%` : ""}
               </span>
             </div>
           );

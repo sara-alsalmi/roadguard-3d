@@ -1,13 +1,13 @@
-import { ChevronLeft, ChevronRight, Crosshair, Film, Trash2, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Crosshair, Film, RotateCw, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { CLASS_META } from "../data/config";
 import { SAMPLES } from "../data/samples";
 import { useApp } from "../store/appStore";
 import type { Incident, IncidentClass, MediaItem } from "../types";
 import { AnnotatedImage } from "../components/inspection/AnnotatedImage";
 import { ClassBadge, ClassGlyph, LocationBadge } from "../components/ui/common";
-import { flyToLocation, removeDamage, selectDamage } from "./actions";
-import { CLASSES, ingestFiles, placeDamage } from "./ingest";
+import { flyToLocation, goOverview, removeDamage, selectDamage } from "./actions";
+import { CLASSES, datasetManifest, ingestFiles, loadDatasetCases, placeDamage } from "./ingest";
 
 /** Right panel: upload photos / videos, the list of damages on the map, and the opened damage. */
 export function TwinPanel() {
@@ -17,8 +17,15 @@ export function TwinPanel() {
 
 function Overview() {
   const damages = useApp((s) => s.incidents);
+  const [dataset, setDataset] = useState<Awaited<ReturnType<typeof datasetManifest>>>(null);
+  useEffect(() => { void datasetManifest().then(setDataset); }, []);
   return (
     <div className="flex flex-col gap-5">
+      {dataset && (
+        <button className="btn btn-primary w-full justify-center" onClick={() => { loadDatasetCases(dataset); goOverview(); }} data-testid="load-dataset">
+          Show {dataset.cases.length} real dataset cases
+        </button>
+      )}
       <UploadBox />
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -134,7 +141,7 @@ function DamageView({ d }: { d: Incident }) {
       {m && (
         <div className="flex flex-col gap-2">
           {m.type === "image" ? (
-            <AnnotatedImage src={m.url} annotations={m.annotations} showBoxes alt={d.title} />
+            <RotatableImage key={m.url} src={m.url} annotations={m.annotations} alt={d.title} />
           ) : (
             <video src={m.url} controls autoPlay muted loop playsInline className="w-full rounded-xl border border-white/10 bg-black" data-testid="damage-video" />
           )}
@@ -174,6 +181,34 @@ function DamageView({ d }: { d: Incident }) {
           <button className="btn btn-sm" onClick={() => removeDamage(d.id)} data-testid="remove"><Trash2 size={13} /> Remove</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Many dataset photos were stored sideways. Rotating turns the photo AND its boxes together (the labels stay correct,
+ * because the boxes were drawn on the stored pixels).
+ */
+function RotatableImage({ src, annotations, alt }: { src: string; annotations: MediaItem["annotations"]; alt: string }) {
+  const [rot, setRot] = useState(0);
+  const [ratio, setRatio] = useState(1); // width / height of the stored image
+  useEffect(() => {
+    const im = new Image();
+    im.onload = () => im.naturalHeight && setRatio(im.naturalWidth / im.naturalHeight);
+    im.src = src;
+  }, [src]);
+  const side = rot % 180 !== 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: side ? `${1 / ratio}` : `${ratio}` }}>
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{ width: side ? `${ratio * 100}%` : "100%", transform: `translate(-50%, -50%) rotate(${rot}deg)` }}
+        >
+          <AnnotatedImage src={src} annotations={annotations} showBoxes alt={alt} />
+        </div>
+      </div>
+      <button className="btn btn-sm self-start" onClick={() => setRot((rot + 90) % 360)} data-testid="rotate"><RotateCw size={13} /> Rotate photo</button>
     </div>
   );
 }
